@@ -1,19 +1,24 @@
 package com.example.songplayermvvm
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import android.support.v4.media.session.PlaybackStateCompat
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.core.view.isVisible
+import androidx.navigation.fragment.findNavController
+import androidx.viewpager2.widget.ViewPager2
 import com.bumptech.glide.RequestManager
-import com.example.songplayermvvm.ui.theme.SongPlayerMVVMTheme
+import com.example.songplayermvvm.adapter.SwipeSongAdapter
+import com.example.songplayermvvm.data.Song
+import com.example.songplayermvvm.other.Status.ERROR
+import com.example.songplayermvvm.other.Status.LOADING
+import com.example.songplayermvvm.other.Status.SUCCESS
+import com.example.songplayermvvm.player.isPlaying
+import com.example.songplayermvvm.player.toSong
+import com.example.songplayermvvm.ui.viewmodel.MainViewModel
+import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.android.synthetic.main.activity_main.*
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -22,8 +27,122 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var glide: RequestManager
 
+    @Inject
+    lateinit var swipeSongAdapter: SwipeSongAdapter
+
+    private val mainViewModel: MainViewModel by viewModels()
+
+    private var curPlayingSong: Song? = null
+
+    private var playbackState: PlaybackStateCompat? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        subscribeToObservers()
+        vpSong.adapter = swipeSongAdapter
+
+        vpSong.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                super.onPageSelected(position)
+                if(playbackState?.isPlaying == true) {
+                    mainViewModel.playOrToggleSong(swipeSongAdapter.songs[position])
+                } else {
+                    curPlayingSong = swipeSongAdapter.songs[position]
+                }
+            }
+        })
+
+        ivPlayPause.setOnClickListener {
+            curPlayingSong?.let {
+                mainViewModel.playOrToggleSong(it, true)
+            }
+        }
+
+        swipeSongAdapter.setItemClickListener {
+            navHostFragment.findNavController().navigate(R.id.globalActionToSongFragment)
+        }
+
+        navHostFragment.findNavController().addOnDestinationChangedListener { _, destination, _ ->
+            when(destination.id) {
+                R.id.songFragment -> hideBottomBar()
+                R.id.homeFragment -> showBottomBar()
+                else -> showBottomBar()
+            }
+        }
+    }
+
+    private fun hideBottomBar() {
+        ivCurSongImage.isVisible = false
+        vpSong.isVisible = false
+        ivPlayPause.isVisible = false
+    }
+
+    private fun showBottomBar() {
+        ivCurSongImage.isVisible = true
+        vpSong.isVisible = true
+        ivPlayPause.isVisible = true
+    }
+
+    private fun switchViewPagerToCurrentSong(song: Song) {
+        val newItemIndex = swipeSongAdapter.songs.indexOf(song)
+        if (newItemIndex != -1) {
+            vpSong.currentItem = newItemIndex
+            curPlayingSong = song
+        }
+    }
+
+    private fun subscribeToObservers() {
+        mainViewModel.mediaItems.observe(this) {
+            it.let { result ->
+                when(result.status) {
+                    SUCCESS -> {
+                        result.data?.let { songs ->
+                            swipeSongAdapter.songs = songs
+                            if(songs.isNotEmpty()) {
+                                glide.load((curPlayingSong ?: songs[0]).imageUrl).into(ivCurSongImage)
+                            }
+                            switchViewPagerToCurrentSong(curPlayingSong ?: return@observe)
+                        }
+                    }
+                    ERROR -> Unit
+                    LOADING -> Unit
+                }
+            }
+        }
+        mainViewModel.curPlayingSong.observe(this) {
+            if(it == null) return@observe
+
+            curPlayingSong = it.toSong()
+            glide.load(curPlayingSong?.imageUrl).into(ivCurSongImage)
+            switchViewPagerToCurrentSong(curPlayingSong ?: return@observe)
+        }
+        mainViewModel.playbackState.observe(this) {
+            playbackState = it
+            ivPlayPause.setImageResource(
+                if(playbackState?.isPlaying == true) {
+                    R.drawable.ic_pause
+                } else {
+                    R.drawable.ic_play
+                }
+            )
+        }
+        mainViewModel.isConnected.observe(this) {
+            it?.getContentIfNotHandled()?.let { result ->
+                when(result.status) {
+                    ERROR -> Snackbar.make(rootLayout, result.message ?: "Unknown error occurred", Snackbar.LENGTH_LONG).show()
+                    else -> Unit
+                }
+            }
+        }
+        mainViewModel.networkError.observe(this) {
+            it?.getContentIfNotHandled()?.let { result ->
+                when(result.status) {
+                    ERROR -> Snackbar.make(rootLayout, result.message ?: "Unknown error occurred", Snackbar.LENGTH_LONG).show()
+                    else -> Unit
+                }
+            }
+        }
     }
 }

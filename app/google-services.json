@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "19421375948",
+    "project_id": "songplayermvvm",
+    "storage_bucket": "songplayermvvm.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:19421375948:android:857be5f190d3b84923c169",
+        "android_client_info": {
+          "package_name": "com.example.songplayermvvm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBzsh9aDn3I_pjhhtO37-X2fWYTzSidQRU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
